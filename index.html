@@ -2,40 +2,33 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Word Learner TWA 2.0</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Word Learner Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            /* Убедимся, что фон TWA установлен корректно */
-            background-color: var(--tg-theme-bg-color, #f8fafc); 
-            color: var(--tg-theme-text-color, #0f172a);
+            background-color: var(--tg-theme-bg-color, #f3f4f6);
+            color: var(--tg-theme-text-color, #1f2937);
+            -webkit-tap-highlight-color: transparent;
         }
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         
-        .view {
-            display: none;
-        }
-        .view.active {
-            display: block;
-        }
-
-        .chart-container {
-            position: relative;
-            width: 100%;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-            height: 250px;
-            max-height: 300px;
+        .view { display: none; animation: fadeIn 0.2s ease-in-out; }
+        .view.active { display: block; }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .flip-card {
-            perspective: 1000px;
+        .card-shadow {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
+
+        /* Стили для карточек обучения */
+        .flip-card { perspective: 1000px; }
         .flip-card-inner {
             position: relative;
             width: 100%;
@@ -43,517 +36,481 @@
             transition: transform 0.6s;
             transform-style: preserve-3d;
         }
-        .flip-card.is-flipped .flip-card-inner {
-            transform: rotateY(180deg);
-        }
-        .flip-card-front,
-        .flip-card-back {
+        .flip-card.is-flipped .flip-card-inner { transform: rotateY(180deg); }
+        .flip-card-front, .flip-card-back {
             position: absolute;
             width: 100%;
             height: 100%;
-            -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
-            text-align: center;
+            flex-direction: column;
         }
-        .flip-card-back {
-            transform: rotateY(180deg);
-        }
+        .flip-card-back { transform: rotateY(180deg); }
         
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
-        }
-        /* Custom styles for TWA color dynamic */
-        .bg-twa-primary {
-            background-color: var(--tg-theme-button-color, #007bff);
-        }
-        .text-twa-primary {
-            color: var(--tg-theme-button-text-color, #ffffff);
-        }
-        .border-twa-hint {
-             border-color: var(--tg-theme-hint-color, #9ca3af);
-        }
+        /* Кастомный скроллбар скрыт для мобильных */
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 flex flex-col h-screen" style="padding-bottom: 64px; background-color: var(--tg-theme-bg-color, #f8fafc); color: var(--tg-theme-text-color, #0f172a);">
+<body class="flex flex-col h-screen pb-20">
 
-    <main class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+    <header class="p-4 flex justify-between items-center sticky top-0 z-10 backdrop-blur-md bg-white/70 border-b border-gray-200">
+        <div class="flex items-center gap-2">
+            <span class="text-2xl">🎓</span>
+            <h1 class="font-bold text-lg tracking-tight">WordMaster AI</h1>
+        </div>
+        <div class="text-xs font-medium px-2 py-1 bg-green-100 text-green-700 rounded-full" id="connection-status">
+            Online
+        </div>
+    </header>
 
-        <div id="home-view" class="view active space-y-6">
-            <h1 class="text-3xl font-bold text-slate-800" style="color: var(--tg-theme-text-color, #0f172a);">Главная</h1>
-            <p class="text-slate-600" style="color: var(--tg-theme-hint-color, #475569);">Добро пожаловать в ваш личный тренажер слов. Начните с добавления новых слов или перейдите к обучению.</p>
+    <main class="flex-1 overflow-y-auto p-4 space-y-6">
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-100" style="background-color: var(--tg-theme-secondary-bg-color, #ffffff);">
-                    <h3 class="text-lg font-semibold text-slate-500 mb-2" style="color: var(--tg-theme-hint-color, #64748b);">Всего слов в словаре</h3>
-                    <p id="home-total-words" class="text-4xl font-bold text-sky-600" style="color: var(--tg-theme-link-color, #0ea5e9);">0</p>
+        <div id="home-view" class="view active">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Мои наборы слов</h2>
+                <button onclick="openCreateSetModal()" class="text-blue-600 font-medium text-sm">+ Новый набор</button>
+            </div>
+
+            <div id="sets-container" class="grid grid-cols-1 gap-3">
                 </div>
-                <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-100" style="background-color: var(--tg-theme-secondary-bg-color, #ffffff);">
-                    <h3 class="text-lg font-semibold text-slate-500 mb-2" style="color: var(--tg-theme-hint-color, #64748b);">Слов выучено</h3>
-                    <p id="home-learned-words" class="text-4xl font-bold text-emerald-600">0</p>
+
+            <div class="mt-8 bg-white p-5 rounded-2xl card-shadow border border-gray-100">
+                <h3 class="font-bold text-gray-800 mb-2">⚡ Быстрые действия</h3>
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="requestBackendAction('GPT_GENERATE_TASK')" class="bg-gradient-to-br from-purple-500 to-indigo-600 text-white p-3 rounded-xl text-sm font-medium flex flex-col items-center gap-1 shadow-lg shadow-purple-200">
+                        <span class="text-xl">✨</span>
+                        <span>GPT Задание</span>
+                    </button>
+                    <button onclick="requestBackendAction('SET_REMINDER')" class="bg-white border border-gray-200 text-gray-700 p-3 rounded-xl text-sm font-medium flex flex-col items-center gap-1 shadow-sm">
+                        <span class="text-xl">⏰</span>
+                        <span>Напомнить</span>
+                    </button>
+                </div>
+                <p class="text-xs text-gray-400 mt-2 text-center">Действия отправляются боту</p>
+            </div>
+        </div>
+
+        <div id="set-view" class="view">
+            <button onclick="navigate('home-view')" class="mb-4 flex items-center text-gray-500 text-sm">
+                ← Назад к наборам
+            </button>
+            
+            <div class="flex justify-between items-end mb-4">
+                <div>
+                    <h1 id="current-set-title" class="text-2xl font-bold text-gray-800">...</h1>
+                    <p id="current-set-stats" class="text-sm text-gray-500">0 слов</p>
+                </div>
+                <button onclick="startLearningSession()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold shadow-lg shadow-blue-200 active:scale-95 transition-transform">
+                    Учить ▶
+                </button>
+            </div>
+
+            <div id="word-list-container" class="space-y-2 pb-20">
+                </div>
+        </div>
+
+        <div id="learn-view" class="view h-full flex flex-col">
+            <div class="flex justify-between items-center mb-6">
+                <button onclick="navigate('set-view')" class="text-gray-400">✕ Выход</button>
+                <div class="text-sm font-medium text-gray-500"><span id="progress-current">1</span> / <span id="progress-total">10</span></div>
+            </div>
+
+            <div class="flex-1 flex items-center justify-center">
+                <div id="flashcard" class="flip-card w-full h-80" onclick="this.classList.toggle('is-flipped')">
+                    <div class="flip-card-inner bg-white rounded-3xl shadow-2xl border border-gray-100">
+                        <div class="flip-card-front">
+                            <span class="text-xs uppercase tracking-wider text-gray-400 mb-2">Английский</span>
+                            <h2 id="card-front" class="text-4xl font-bold text-gray-800 text-center px-4">Word</h2>
+                            <p class="text-xs text-gray-400 mt-8 animate-pulse">Нажми, чтобы перевернуть</p>
+                        </div>
+                        <div class="flip-card-back bg-gradient-to-br from-blue-50 to-white rounded-3xl">
+                            <span class="text-xs uppercase tracking-wider text-blue-500 mb-2">Русский</span>
+                            <h2 id="card-back" class="text-3xl font-bold text-blue-700 text-center px-4">Слово</h2>
+                        </div>
+                    </div>
                 </div>
             </div>
 
+            <div class="mt-8 grid grid-cols-2 gap-4">
+                <button onclick="rateWord('hard')" class="p-4 rounded-xl bg-orange-100 text-orange-700 font-semibold">Сложно</button>
+                <button onclick="rateWord('easy')" class="p-4 rounded-xl bg-green-100 text-green-700 font-semibold">Знаю</button>
+            </div>
+        </div>
+
+        <div id="add-view" class="view">
+            <h2 class="text-xl font-bold mb-6">Добавить новое слово</h2>
+            
             <div class="space-y-4">
-                <button onclick="startLearn('flashcard')" class="w-full bg-sky-600 text-white font-semibold py-4 px-6 rounded-xl shadow-xl hover:bg-sky-700 transition-all text-lg flex items-center justify-center space-x-2">
-                    <span>🧠</span>
-                    <span>Начать (Карточки)</span>
-                </button>
-                <button onclick="startLearn('quiz')" class="w-full bg-white text-sky-700 border-2 border-sky-600 font-semibold py-4 px-6 rounded-xl shadow-md hover:bg-sky-50 transition-all text-lg flex items-center justify-center space-x-2">
-                    <span>✍️</span>
-                    <span>Начать (Викторина)</span>
-                </button>
-                <button onclick="startLearn('typing')" class="w-full bg-white text-emerald-700 border-2 border-emerald-600 font-semibold py-4 px-6 rounded-xl shadow-md hover:bg-emerald-50 transition-all text-lg flex items-center justify-center space-x-2">
-                    <span>📝</span>
-                    <span>Написание Перевода</span>
-                </button>
-                
-                <hr class="border-slate-200">
-                
-                <button onclick="navigate('gpt-view')" class="w-full bg-indigo-600 text-white font-semibold py-4 px-6 rounded-xl shadow-xl hover:bg-indigo-700 transition-all text-lg flex items-center justify-center space-x-2">
-                    <span>🤖</span>
-                    <span>GPT Задания (Advanced)</span>
-                </button>
-                <button onclick="requestDailyReminder()" class="w-full bg-slate-200 text-slate-800 font-semibold py-3 px-6 rounded-xl shadow-inner hover:bg-slate-300 transition-all text-sm flex items-center justify-center space-x-2">
-                    <span>⏰</span>
-                    <span>Установить ежедневное напоминание (через Бота)</span>
-                </button>
-            </div>
-        </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Набор (Словарь)</label>
+                    <select id="add-set-select" class="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-500 transition-colors">
+                        </select>
+                </div>
 
-        <div id="learn-view" class="view space-y-6">
-            <h1 class="text-3xl font-bold text-slate-800">Тренажер</h1>
-            <p class="text-slate-600">Практикуйте слова, чтобы запомнить их.</p>
-
-            <div id="no-words-message" class="hidden text-center p-6 rounded-xl shadow-md" style="background-color: var(--tg-theme-secondary-bg-color, #ffffff);">
-                <p class="text-xl font-semibold text-slate-700">В вашем словаре пока нет слов.</p>
-                <p class="text-slate-500 mt-2">Пожалуйста, добавьте слова на вкладке "Добавить", чтобы начать обучение.</p>
-                <button onclick="navigate('add-view')" class="mt-4 bg-sky-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-sky-700 transition-all">
-                    Добавить слова
-                </button>
-            </div>
-
-            <div id="learn-container" class="space-y-4">
-                <div id="flashcard-mode" class="hidden space-y-4">...</div>
-
-                <div id="quiz-mode" class="hidden space-y-4">...</div>
-                
-                <div id="spelling-mode" class="hidden space-y-4">
-                    <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-100 text-center" style="background-color: var(--tg-theme-secondary-bg-color, #ffffff);">
-                        <p class="text-sm text-slate-500 mb-2">Напишите перевод:</p>
-                        <h2 id="spelling-question" class="text-3xl font-bold text-slate-800 mb-6"></h2>
+                <div class="grid grid-cols-1 gap-4">
+                    <div class="relative">
+                        <span class="absolute left-3 top-3 text-gray-400 text-xs">ENG</span>
+                        <input type="text" id="input-eng" class="w-full pt-7 pb-2 px-3 bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-500 text-lg font-medium" placeholder="Apple">
                     </div>
-                    <input type="text" id="spelling-input" class="w-full p-4 border-2 border-slate-300 rounded-lg text-lg focus:ring-sky-500" placeholder="Введите слово на английском..." style="background-color: var(--tg-theme-secondary-bg-color, #ffffff); color: var(--tg-theme-text-color, #0f172a); border-color: var(--tg-theme-hint-color, #94a3b8);">
-                    <button onclick="checkSpelling()" class="w-full bg-emerald-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-emerald-700 transition-all">
-                        Проверить
-                    </button>
-                    <div id="spelling-feedback" class="text-center font-semibold p-3 rounded-lg hidden"></div>
-                    <button onclick="nextWord()" id="spelling-next-btn" class="w-full bg-sky-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-sky-700 transition-all hidden">
-                        Следующее
-                    </button>
-                </div>
-                
-                <div id="typing-mode" class="hidden space-y-4">
-                    <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-100 text-center" style="background-color: var(--tg-theme-secondary-bg-color, #ffffff);">
-                        <p class="text-sm text-slate-500 mb-2">Напишите русский перевод:</p>
-                        <h2 id="typing-question" class="text-3xl font-bold text-slate-800 mb-6"></h2>
+                    <div class="relative">
+                        <span class="absolute left-3 top-3 text-gray-400 text-xs">RUS</span>
+                        <input type="text" id="input-rus" class="w-full pt-7 pb-2 px-3 bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-500 text-lg font-medium" placeholder="Яблоко">
                     </div>
-                    <input type="text" id="typing-input" class="w-full p-4 border-2 border-slate-300 rounded-lg text-lg focus:ring-sky-500" placeholder="Введите слово на русском..." style="background-color: var(--tg-theme-secondary-bg-color, #ffffff); color: var(--tg-theme-text-color, #0f172a); border-color: var(--tg-theme-hint-color, #94a3b8);">
-                    <button onclick="checkTyping()" class="w-full bg-emerald-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-emerald-700 transition-all">
-                        Проверить
-                    </button>
-                    <div id="typing-feedback" class="text-center font-semibold p-3 rounded-lg hidden"></div>
-                    <button onclick="nextWord()" id="typing-next-btn" class="w-full bg-sky-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-sky-700 transition-all hidden">
-                        Следующее
-                    </button>
-                </div>
-            </div>
-        </div>
-        
-        <div id="dictionary-view" class="view space-y-6">...</div>
-
-        <div id="add-view" class="view space-y-6">...</div>
-
-        <div id="stats-view" class="view space-y-6">...</div>
-        
-        <div id="gpt-view" class="view space-y-6">
-            <h1 class="text-3xl font-bold text-slate-800">GPT Задания</h1>
-            <p class="text-slate-600">Отправьте свои слова боту для генерации продвинутых заданий и примеров.</p>
-            
-            <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-100 space-y-4" style="background-color: var(--tg-theme-secondary-bg-color, #ffffff);">
-                <p class="text-lg font-semibold text-slate-700">Что вы хотите получить?</p>
-                
-                <div class="space-y-3">
-                    <label class="flex items-center space-x-3">
-                        <input type="radio" name="gpt-task" value="sentences" checked class="form-radio text-sky-600 h-5 w-5">
-                        <span class="text-slate-700">Предложения с примерами использования</span>
-                    </label>
-                    <label class="flex items-center space-x-3">
-                        <input type="radio" name="gpt-task" value="story" class="form-radio text-sky-600 h-5 w-5">
-                        <span class="text-slate-700">Короткий рассказ с моими словами</span>
-                    </label>
-                    <label class="flex items-center space-x-3">
-                        <input type="radio" name="gpt-task" value="quiz" class="form-radio text-sky-600 h-5 w-5">
-                        <span class="text-slate-700">Сложная викторина на основе контекста</span>
-                    </label>
                 </div>
                 
-                <p class="text-sm text-red-500">
-                    <span id="gpt-word-count-note"></span>
-                </p>
-                
-                <button onclick="requestGPTTask()" id="request-gpt-btn" class="w-full bg-indigo-600 text-white font-semibold py-3 px-6 rounded-xl shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50">
-                    Отправить запрос боту (нужен бэкенд)
-                </button>
+                <div class="pt-4">
+                    <button onclick="saveNewWord()" class="w-full bg-black text-white py-4 rounded-xl font-bold shadow-lg active:scale-95 transition-transform">
+                        Сохранить слово
+                    </button>
+                    
+                    <div class="mt-6">
+                        <p class="text-sm text-gray-500 mb-2">Или загрузить списком:</p>
+                        <textarea id="bulk-input" class="w-full p-3 border border-gray-200 rounded-xl text-sm h-24" placeholder="Dog - Собака&#10;Cat - Кошка"></textarea>
+                        <button onclick="saveBulkWords()" class="mt-2 w-full bg-gray-100 text-gray-700 py-2 rounded-lg font-medium">Импорт списка</button>
+                    </div>
+                </div>
             </div>
-            
-            <p id="gpt-feedback" class="text-center font-semibold p-3 rounded-lg hidden"></p>
         </div>
 
     </main>
 
-    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-inner h-16 flex justify-around items-center" style="background-color: var(--tg-theme-secondary-bg-color, #ffffff); border-top-color: var(--tg-theme-secondary-bg-color, #f1f5f9);">
-        <button data-view="home-view" class="nav-btn flex flex-col items-center justify-center text-sky-600 w-full" style="color: var(--tg-theme-hint-color, #94a3b8);">
+    <nav class="fixed bottom-0 w-full bg-white border-t border-gray-200 flex justify-around pb-safe pt-2 px-2 z-50 h-16">
+        <button onclick="navigate('home-view')" class="nav-btn flex-1 flex flex-col items-center justify-center text-blue-600" data-target="home-view">
             <span class="text-2xl">🏠</span>
-            <span class="text-xs font-medium">Главная</span>
+            <span class="text-[10px] font-medium mt-1">Главная</span>
         </button>
-        <button data-view="learn-view" class="nav-btn flex flex-col items-center justify-center text-slate-500 w-full" style="color: var(--tg-theme-hint-color, #94a3b8);">
-            <span class="text-2xl">🧠</span>
-            <span class="text-xs font-medium">Учить</span>
+        <button onclick="navigate('add-view')" class="nav-btn flex-1 flex flex-col items-center justify-center text-gray-400" data-target="add-view">
+            <div class="bg-blue-600 rounded-full p-2 -mt-6 shadow-lg border-4 border-white">
+                <span class="text-white text-xl font-bold">+</span>
+            </div>
         </button>
-        <button data-view="dictionary-view" class="nav-btn flex flex-col items-center justify-center text-slate-500 w-full" style="color: var(--tg-theme-hint-color, #94a3b8);">
-            <span class="text-2xl">📚</span>
-            <span class="text-xs font-medium">Словарь</span>
-        </button>
-        <button data-view="add-view" class="nav-btn flex flex-col items-center justify-center text-slate-500 w-full" style="color: var(--tg-theme-hint-color, #94a3b8);">
-            <span class="text-2xl">➕</span>
-            <span class="text-xs font-medium">Добавить</span>
-        </button>
-        <button data-view="stats-view" class="nav-btn flex flex-col items-center justify-center text-slate-500 w-full" style="color: var(--tg-theme-hint-color, #94a3b8);">
-            <span class="text-2xl">📊</span>
-            <span class="text-xs font-medium">Статус</span>
+        <button onclick="navigate('learn-view')" class="nav-btn flex-1 flex flex-col items-center justify-center text-gray-400" data-target="learn-view">
+             <span class="text-2xl">📊</span>
+             <span class="text-[10px] font-medium mt-1">Статус</span>
         </button>
     </nav>
 
+    <div id="modal-create-set" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-bounce-in">
+            <h3 class="text-lg font-bold mb-4">Новый набор слов</h3>
+            <input type="text" id="new-set-name" class="w-full p-3 border border-gray-200 rounded-xl mb-4 focus:ring-2 ring-blue-500 outline-none" placeholder="Например: Глаголы">
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('modal-create-set').classList.add('hidden')" class="flex-1 py-3 bg-gray-100 rounded-xl font-medium">Отмена</button>
+                <button onclick="createNewSet()" class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold">Создать</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        // *** 1. INIT & STORAGE IMPROVEMENTS (TWA Cloud Storage) ***
-        let tg;
-        const DB_KEY = 'wordLearnerDB_v2'; // Updated key for v2 storage
+        // === 1. ИНИЦИАЛИЗАЦИЯ И БАЗА ДАННЫХ (CloudStorage) ===
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // Структура данных (Реляционная модель)
+        // db.sets = [{ id: 1, name: "Фрукты", color: "bg-red-100" }]
+        // db.words = [{ id: 101, setId: 1, eng: "Apple", rus: "Яблоко", level: 0 }]
         let db = {
-            words: [],
-            stats: {
-                learnedDaily: {},
-            }
+            sets: [],
+            words: []
         };
-        let state = {
-            currentView: 'home-view',
-            currentExercise: 'flashcard',
-            currentWordIndex: 0,
-            quizOptions: [],
-            wordQueue: [],
-            addMode: 'single' // 'single' or 'bulk'
-        };
-        
-        let masteryChartInstance = null;
-        let activityChartInstance = null;
-        
 
-        // Using TWA CloudStorage for cross-device persistence
-        async function saveDB() {
+        const STORAGE_KEY = 'word_learner_v3_db';
+
+        // Загрузка данных (Симуляция DB)
+        async function initApp() {
             try {
-                const data = JSON.stringify(db);
-                if (tg && tg.CloudStorage) {
-                    await tg.CloudStorage.setItem(DB_KEY, data);
-                } else { // Fallback for testing outside TWA
-                    localStorage.setItem(DB_KEY, data);
-                }
-            } catch (e) {
-                console.error("Error saving DB", e);
-            }
-        }
-        
-        async function loadDB() {
-            try {
-                let data = null;
-                if (tg && tg.CloudStorage) {
-                    data = await tg.CloudStorage.getItem(DB_KEY);
+                if(tg.CloudStorage) {
+                    // Попытка загрузить из облака Telegram
+                    const raw = await new Promise((resolve) => {
+                        tg.CloudStorage.getItem(STORAGE_KEY, (err, val) => resolve(val));
+                    });
+                    if(raw) db = JSON.parse(raw);
                 } else {
-                    data = localStorage.getItem(DB_KEY);
+                    // LocalStorage для теста в браузере
+                    const raw = localStorage.getItem(STORAGE_KEY);
+                    if(raw) db = JSON.parse(raw);
                 }
+            } catch(e) { console.error(e); }
 
-                if (data) {
-                    const loadedDb = JSON.parse(data);
-                    // Merge and ensure structure integrity
-                    db.words = loadedDb.words || [];
-                    db.stats = loadedDb.stats || { learnedDaily: {} };
-                }
-            } catch (e) {
-                console.error("Error loading DB", e);
-                db = { words: [], stats: { learnedDaily: {} } };
+            // Если данных нет, создаем дефолтный набор
+            if(db.sets.length === 0) {
+                db.sets.push({ id: Date.now(), name: 'Мой первый словарь', color: 'bg-blue-100' });
+                saveDB();
+            }
+
+            renderSets();
+            updateSetSelect();
+        }
+
+        function saveDB() {
+            const data = JSON.stringify(db);
+            if(tg.CloudStorage) {
+                tg.CloudStorage.setItem(STORAGE_KEY, data);
+            } else {
+                localStorage.setItem(STORAGE_KEY, data);
             }
         }
+
+        // === 2. ЛОГИКА ИНТЕРФЕЙСА ===
         
-        // Helper function for navigating and updating active nav button color
         function navigate(viewId) {
-            document.querySelectorAll('.view').forEach(view => {
-                view.classList.remove('active');
-            });
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             document.getElementById(viewId).classList.add('active');
             
+            // Обновление кнопок меню
             document.querySelectorAll('.nav-btn').forEach(btn => {
-                // Remove active TWA color style
-                btn.style.color = 'var(--tg-theme-hint-color, #94a3b8)'; 
+                if(btn.dataset.target === viewId) btn.classList.add('text-blue-600', 'text-gray-400');
+                else btn.classList.remove('text-blue-600');
+                if(btn.dataset.target !== viewId) btn.classList.add('text-gray-400');
             });
-            
-            const activeBtn = document.querySelector(`.nav-btn[data-view="${viewId}"]`);
-            if (activeBtn) {
-                // Apply active TWA color style
-                activeBtn.style.color = 'var(--tg-theme-link-color, #0ea5e9)'; 
-            }
-            
-            state.currentView = viewId;
-            
-            // View specific logic
-            if (viewId === 'home-view') {
-                 renderHomeStats();
-                 if(tg) tg.MainButton.hide();
-            }
-            if (viewId === 'dictionary-view') renderDictionary();
-            if (viewId === 'stats-view') renderStatsCharts();
-            if (viewId === 'add-view') setupAddWordView();
-            if (viewId === 'gpt-view') setupGPTView();
-            if (viewId === 'learn-view') {
-                if(tg) tg.MainButton.hide();
-            }
-        }
-        
-        // *** 2. GPT INTEGRATION INTERFACE ***
 
-        function setupGPTView() {
-            const wordCount = db.words.length;
-            const noteEl = document.getElementById('gpt-word-count-note');
-            const btn = document.getElementById('request-gpt-btn');
-            
-            if (wordCount < 5) {
-                noteEl.textContent = `Для генерации заданий нужно минимум 5 слов. У вас: ${wordCount}.`;
-                btn.disabled = true;
-            } else {
-                noteEl.textContent = `Ваш запрос будет основан на ${wordCount} словах из словаря.`;
-                btn.disabled = false;
-            }
-            document.getElementById('gpt-feedback').classList.add('hidden');
+            if(viewId === 'home-view') renderSets();
         }
 
-        function requestGPTTask() {
-            if (!tg || !tg.sendData) {
-                alert('Эта функция доступна только внутри Telegram Web App, который запущен ботом с бэкендом.');
+        // --- Управление Наборами (Sets) ---
+
+        function renderSets() {
+            const container = document.getElementById('sets-container');
+            container.innerHTML = '';
+
+            db.sets.forEach(set => {
+                const wordCount = db.words.filter(w => w.setId === set.id).length;
+                const div = document.createElement('div');
+                div.className = 'bg-white p-4 rounded-2xl border border-gray-100 card-shadow flex justify-between items-center active:bg-gray-50 transition-colors cursor-pointer';
+                div.onclick = () => openSet(set.id);
+                div.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl ${set.color || 'bg-gray-100'} flex items-center justify-center text-xl">
+                            📁
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-gray-800">${set.name}</h3>
+                            <p class="text-xs text-gray-500">${wordCount} слов • Изучается</p>
+                        </div>
+                    </div>
+                    <div class="text-gray-300">➜</div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function openCreateSetModal() {
+            document.getElementById('modal-create-set').classList.remove('hidden');
+            document.getElementById('new-set-name').focus();
+        }
+
+        function createNewSet() {
+            const name = document.getElementById('new-set-name').value.trim();
+            if(!name) return;
+
+            const colors = ['bg-red-100', 'bg-blue-100', 'bg-green-100', 'bg-purple-100', 'bg-orange-100'];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+            db.sets.push({
+                id: Date.now(),
+                name: name,
+                color: randomColor
+            });
+            saveDB();
+            document.getElementById('new-set-name').value = '';
+            document.getElementById('modal-create-set').classList.add('hidden');
+            renderSets();
+            updateSetSelect();
+        }
+
+        // --- Просмотр Набора и Слов ---
+
+        let currentSetId = null;
+
+        function openSet(setId) {
+            currentSetId = setId;
+            const set = db.sets.find(s => s.id === setId);
+            const words = db.words.filter(w => w.setId === setId);
+            
+            document.getElementById('current-set-title').innerText = set.name;
+            document.getElementById('current-set-stats').innerText = `${words.length} слов всего`;
+            
+            const list = document.getElementById('word-list-container');
+            list.innerHTML = '';
+
+            if(words.length === 0) {
+                list.innerHTML = `<div class="text-center py-10 text-gray-400">В этом наборе пока пусто.<br>Добавьте слова!</div>`;
+            }
+
+            words.forEach(word => {
+                const item = document.createElement('div');
+                item.className = 'bg-white p-3 rounded-xl border border-gray-100 flex justify-between items-center mb-2';
+                item.innerHTML = `
+                    <div>
+                        <div class="font-bold text-gray-800">${word.eng}</div>
+                        <div class="text-sm text-gray-500">${word.rus}</div>
+                    </div>
+                    <div class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-500">lvl ${word.level || 0}</div>
+                `;
+                list.appendChild(item);
+            });
+
+            navigate('set-view');
+        }
+
+        // --- Добавление Слов ---
+
+        function updateSetSelect() {
+            const sel = document.getElementById('add-set-select');
+            sel.innerHTML = '';
+            db.sets.forEach(set => {
+                const opt = document.createElement('option');
+                opt.value = set.id;
+                opt.innerText = set.name;
+                sel.appendChild(opt);
+            });
+        }
+
+        function saveNewWord() {
+            const setId = Number(document.getElementById('add-set-select').value);
+            const eng = document.getElementById('input-eng').value.trim();
+            const rus = document.getElementById('input-rus').value.trim();
+
+            if(!eng || !rus) {
+                tg.HapticFeedback.notificationOccurred('error');
                 return;
             }
-            
-            const selectedTask = document.querySelector('input[name="gpt-task"]:checked').value;
-            const wordsForGPT = db.words.map(w => ({ eng: w.eng, rus: w.rus })).slice(0, 50); // Limit to 50 for safety
-            const feedbackEl = document.getElementById('gpt-feedback');
 
-            const payload = {
-                action: 'REQUEST_GPT_TASK',
-                taskType: selectedTask,
-                words: wordsForGPT,
-                user: tg.initDataUnsafe.user // Optional: pass user info for personalized response
-            };
+            db.words.push({
+                id: Date.now(),
+                setId: setId,
+                eng: eng,
+                rus: rus,
+                level: 0, // 0 - новое, 5 - выучено
+                nextReview: Date.now()
+            });
 
-            // Send data to the bot backend
-            tg.sendData(JSON.stringify(payload));
+            saveDB();
+            tg.HapticFeedback.notificationOccurred('success');
             
-            feedbackEl.innerHTML = 'Запрос отправлен вашему боту. Ответ появится в чате Telegram!';
-            feedbackEl.classList.remove('hidden', 'bg-red-100', 'text-red-700');
-            feedbackEl.classList.add('bg-sky-100', 'text-sky-700');
-            
-            // Close TWA after a short delay for better user experience
-            setTimeout(() => {
-                tg.close();
-            }, 3000);
+            // Очистка полей
+            document.getElementById('input-eng').value = '';
+            document.getElementById('input-rus').value = '';
+            document.getElementById('input-eng').focus();
         }
         
-        // *** 3. REMINDER FUNCTIONALITY (TWA sendData) ***
-
-        function requestDailyReminder() {
-            if (!tg || !tg.sendData) {
-                alert('Эта функция доступна только внутри Telegram Web App, который запущен ботом с бэкендом.');
-                return;
-            }
+        function saveBulkWords() {
+            const setId = Number(document.getElementById('add-set-select').value);
+            const text = document.getElementById('bulk-input').value.trim();
+            if(!text) return;
             
-            // Send request to the bot to set a daily reminder using its internal scheduler
-            const payload = {
-                action: 'SET_DAILY_REMINDER',
-                time: 'daily',
-                user: tg.initDataUnsafe.user // Pass user info
-            };
-            
-            tg.sendData(JSON.stringify(payload));
-            
-            // Show feedback and close
-            alert('Запрос на установку ежедневного напоминания отправлен. Пожалуйста, проверьте чат с ботом для подтверждения.');
-            tg.close();
-        }
-
-        // *** 4. NEW EXERCISE MODE: TYPING (Reverse Spelling) ***
-
-        function checkTyping() {
-            const input = document.getElementById('typing-input');
-            const answer = input.value.trim().toLowerCase();
-            const word = state.wordQueue[state.currentWordIndex];
-            const correctAnswer = word.rus.toLowerCase();
-            
-            const feedbackEl = document.getElementById('typing-feedback');
-            
-            input.disabled = true;
-            
-            if (answer === correctAnswer) {
-                feedbackEl.textContent = 'Правильно!';
-                feedbackEl.className = 'text-center font-semibold p-3 rounded-lg bg-emerald-100 text-emerald-700';
-                input.classList.remove('border-slate-300', 'border-red-500');
-                input.classList.add('border-emerald-500');
-                updateWordMastery(word.id, true);
-            } else {
-                feedbackEl.innerHTML = `Неверно. Правильный ответ: <b>${word.rus}</b>`;
-                feedbackEl.className = 'text-center font-semibold p-3 rounded-lg bg-red-100 text-red-700';
-                input.classList.remove('border-slate-300', 'border-emerald-500');
-                input.classList.add('border-red-500');
-                updateWordMastery(word.id, false);
-            }
-            
-            feedbackEl.classList.remove('hidden');
-            document.getElementById('typing-next-btn').classList.remove('hidden');
-            document.querySelector('#typing-mode button[onclick="checkTyping()"]').classList.add('hidden');
-        }
-
-        function loadWord() {
-            // ... (Existing logic for completion check and mode display)
-            if (state.currentWordIndex >= state.wordQueue.length) {
-                showCompletionScreen();
-                return;
-            }
-            
-            const word = state.wordQueue[state.currentWordIndex];
-            
-            // Hide all modes
-            document.getElementById('flashcard-mode').classList.add('hidden');
-            document.getElementById('quiz-mode').classList.add('hidden');
-            document.getElementById('spelling-mode').classList.add('hidden');
-            document.getElementById('typing-mode').classList.add('hidden'); // NEW
-            
-            if (state.currentExercise === 'flashcard') {
-                // ... (Flashcard logic)
-            } 
-            else if (state.currentExercise === 'quiz') {
-                // ... (Quiz logic)
-            }
-            else if (state.currentExercise === 'spelling') {
-                // ... (Spelling logic)
-            }
-            else if (state.currentExercise === 'typing') { // NEW MODE
-                document.getElementById('typing-mode').classList.remove('hidden');
-                document.getElementById('typing-question').textContent = word.eng;
-                document.getElementById('typing-input').value = '';
-                document.getElementById('typing-input').disabled = false;
-                document.getElementById('typing-feedback').classList.add('hidden');
-                document.getElementById('typing-next-btn').classList.add('hidden');
-                document.querySelector('#typing-mode button[onclick="checkTyping()"]').classList.remove('hidden');
-                document.getElementById('typing-input').focus();
-            }
-        }
-        
-        // *** 5. Other updated/utility functions ***
-        
-        // Utility function to get current exercise mode element
-        function getCurrentExerciseModeEl() {
-            if (state.currentExercise === 'typing') return document.getElementById('typing-mode');
-            if (state.currentExercise === 'spelling') return document.getElementById('spelling-mode');
-            if (state.currentExercise === 'quiz') return document.getElementById('quiz-mode');
-            if (state.currentExercise === 'flashcard') return document.getElementById('flashcard-mode');
-            return null;
-        }
-
-        // Add event listener for 'Enter' key in the new typing mode
-        function addTypingKeyListener() {
-            document.getElementById('typing-input').addEventListener('keypress', function (e) {
-                if (e.key === 'Enter') {
-                    if(!document.getElementById('typing-next-btn').classList.contains('hidden')) {
-                         nextWord();
-                    } else if (!document.querySelector('#typing-mode button[onclick="checkTyping()"]').classList.contains('hidden')) {
-                         checkTyping();
-                    }
+            const lines = text.split('\n');
+            let count = 0;
+            lines.forEach(line => {
+                const parts = line.split(/[-–—:]/); // Разделители
+                if(parts.length >= 2) {
+                    db.words.push({
+                        id: Date.now() + Math.random(),
+                        setId: setId,
+                        eng: parts[0].trim(),
+                        rus: parts[1].trim(),
+                        level: 0,
+                        nextReview: Date.now()
+                    });
+                    count++;
                 }
             });
-        }
-        
-        // Init logic (updated to use await for loadDB)
-        document.addEventListener('DOMContentLoaded', async () => {
-            // Wait for DB to load from CloudStorage
-            await loadDB(); 
             
-            try {
-                tg = window.Telegram.WebApp;
-                tg.ready();
-                tg.expand();
-                // Set TWA theme colors dynamically
-                if (tg.themeParams) {
-                    const style = document.documentElement.style;
-                    style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color);
-                    style.setProperty('--tg-theme-text-color', tg.themeParams.text_color);
-                    style.setProperty('--tg-theme-link-color', tg.themeParams.link_color);
-                    style.setProperty('--tg-theme-hint-color', tg.themeParams.hint_color);
-                    style.setProperty('--tg-theme-button-color', tg.themeParams.button_color);
-                    style.setProperty('--tg-theme-button-text-color', tg.themeParams.button_text_color);
-                    style.setProperty('--tg-theme-secondary-bg-color', tg.themeParams.secondary_bg_color);
-                    
-                    tg.setHeaderColor(tg.themeParams.secondary_bg_color); 
-                    tg.setBackgroundColor(tg.themeParams.bg_color);
-                }
-            } catch (e) {
-                console.warn("Telegram WebApp script not found or failed to initialize.");
+            saveDB();
+            tg.HapticFeedback.notificationOccurred('success');
+            alert(`Добавлено слов: ${count}`);
+            document.getElementById('bulk-input').value = '';
+        }
+
+        // === 3. ОБУЧЕНИЕ (Карточки) ===
+        
+        let learningQueue = [];
+        let currentCardIdx = 0;
+
+        function startLearningSession() {
+            if(!currentSetId) return;
+            // Алгоритм: берем слова этого набора, сортируем по уровню (сначала новые)
+            const words = db.words.filter(w => w.setId === currentSetId);
+            if(words.length === 0) {
+                alert("Словарь пуст");
+                return;
+            }
+            
+            // Перемешиваем
+            learningQueue = words.sort(() => 0.5 - Math.random()).slice(0, 10); // Берем 10 случайных
+            currentCardIdx = 0;
+            
+            document.getElementById('progress-total').innerText = learningQueue.length;
+            showCard();
+            navigate('learn-view');
+        }
+
+        function showCard() {
+            if(currentCardIdx >= learningQueue.length) {
+                // Конец сессии
+                alert("Сессия завершена! Отличная работа.");
+                navigate('set-view');
+                return;
+            }
+            
+            const word = learningQueue[currentCardIdx];
+            document.getElementById('card-front').innerText = word.eng;
+            document.getElementById('card-back').innerText = word.rus;
+            document.getElementById('progress-current').innerText = currentCardIdx + 1;
+            
+            // Сброс переворота
+            document.getElementById('flashcard').classList.remove('is-flipped');
+        }
+
+        function rateWord(rating) {
+            const word = learningQueue[currentCardIdx];
+            
+            // Простая логика интервального повторения
+            const dbWord = db.words.find(w => w.id === word.id);
+            if(dbWord) {
+                if(rating === 'easy') dbWord.level = Math.min(dbWord.level + 1, 5);
+                else dbWord.level = Math.max(dbWord.level - 1, 0);
+                saveDB();
             }
 
-            document.querySelectorAll('.nav-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    navigate(btn.dataset.view);
-                });
-            });
+            currentCardIdx++;
+            showCard();
+        }
 
-            document.getElementById('dict-search').addEventListener('input', renderDictionary);
+        // === 4. BACKEND ИНТЕГРАЦИЯ (GPT & УВЕДОМЛЕНИЯ) ===
 
-            // Existing form listeners
-            document.getElementById('add-word-form').addEventListener('submit', (e) => {
-                e.preventDefault();
-                handleFormSubmit();
-            });
-            document.getElementById('submit-bulk-btn').addEventListener('click', (e) => {
-                e.preventDefault();
-                handleBulkImport();
-            });
-            
-            // Add listeners for the new 'typing' mode
-            addTypingKeyListener();
+        function requestBackendAction(actionType) {
+            // Проверка среды
+            if (!tg.initData) {
+                alert("Эта функция работает только внутри Telegram!");
+                return;
+            }
 
-            changeAddMode('single'); 
-            navigate('home-view');
-        });
-        
-        // NOTE: All other original functions (addWord, deleteWord, renderDictionary, renderStatsCharts, handleFormSubmit, etc.) 
-        // are assumed to be copied and adapted where necessary, for example, to use the async saveDB/loadDB.
-        
-        // ... (Remaining functions like addWord, deleteWord, getWordsForExercise, updateWordMastery, logDailyActivity, shuffleArray, 
-        // changeAddMode, renderHomeStats, renderDictionary, setupAddWordView, handleFormSubmit, handleBulkImport, renderStatsCharts, 
-        // startLearn, flipCard, checkQuiz, checkSpelling, nextWord, showCompletionScreen from the original code would follow here) ...
+            let payload = { action: actionType };
 
-        // The remaining functions from the original script should be included below, 
-        // ensuring 'saveDB' and 'loadDB' calls are updated to the async versions if the calling function is also made async.
-        
+            if (actionType === 'GPT_GENERATE_TASK') {
+                // Отправляем последние 20 слов боту, чтобы он составил по ним quiz
+                const recentWords = db.words.slice(-20).map(w => `${w.eng} - ${w.rus}`);
+                payload.data = { words: recentWords };
+                
+                // Визуальный фидбек
+                tg.MainButton.setText("Запрашиваю у AI...");
+                tg.MainButton.show();
+                tg.MainButton.showProgress();
+            } else if (actionType === 'SET_REMINDER') {
+                 payload.data = { time: '19:00' }; // Можно сделать выбор времени
+            }
+
+            // Отправка данных боту. 
+            // Бот должен ловить это в 'web_app_data' update
+            tg.sendData(JSON.stringify(payload));
+        }
+
+        // Запуск
+        initApp();
+
     </script>
 </body>
 </html>
