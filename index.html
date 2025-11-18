@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Learner TWA</title>
+    <!-- Chosen Palette: Slate & Sky (Warm neutrals + calm blue accent) -->
+    <!-- Application Structure Plan: SPA с 5-ю вкладками (Главная, Учить, Словарь, Добавить, Статистика), управляемыми через нижнюю навигационную панель. Эта структура интуитивно понятна пользователям мобильных устройств (что актуально для TWA) и четко разделяет основные задачи: быстрый старт/обзор (Главная), активное обучение (Учить), добавление контента (Улучшено: теперь есть режимы "Одно слово" и "Массовый импорт"), просмотр базы (Словарь) и отслеживание прогресса (Статистика). Переключение между видами (div) будет происходить через JS. -->
+    <!-- Visualization & Content Choices: 
+        1. Статистика (Главная): Динамические "карточки" (HTML/Tailwind) для ключевых показателей (Выучено, Всего). Цель: быстрый обзор.
+        2. Статистика (Экран "Статистика"): 
+           - Прогресс (Bar chart, Chart.js). Цель: показать активность за последние 7 дней.
+           - Распределение слов (Donut chart, Chart.js). Цель: показать соотношение (Новые, В процессе, Выученные).
+        3. Упражнения (Экран "Учить"): 
+           - Карточки (HTML/CSS-анимация). Цель: запоминание.
+           - Викторина (HTML-кнопки). Цель: проверка узнавания.
+           - Правописание (HTML-input). Цель: проверка активного воспроизведения.
+        4. Словарь (Экран "Словарь"): Динамический список (HTML/JS). Цель: просмотр и управление.
+        5. Добавление слова (Экран "Добавить"): Форма (HTML) с табами для одиночного и массового ввода. Цель: ввод данных.
+        Все визуализации выбраны для ясности и интерактивности, без использования SVG. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        .view {
+            display: none;
+        }
+        .view.active {
+            display: block;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 250px;
+            max-height: 300px;
+        }
+        
+        @media (min-width: 640px) {
+            .chart-container {
+                height: 300px;
+                max-height: 350px;
+            }
+        }
+
+        .flip-card {
+            perspective: 1000px;
+        }
+        .flip-card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+        .flip-card.is-flipped .flip-card-inner {
+            transform: rotateY(180deg);
+        }
+        .flip-card-front,
+        .flip-card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .flip-card-back {
+            transform: rotateY(180deg);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 flex flex-col h-screen" style="padding-bottom: 64px;">
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+
+        <!-- View: Home (Главная) -->
+        <div id="home-view" class="view active space-y-6">
+            <h1 class="text-3xl font-bold text-slate-800">Главная</h1>
+            <p class="text-slate-600">Добро пожаловать в ваш личный тренажер слов. Начните с добавления новых слов или перейдите к обучению.</p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-100">
+                    <h3 class="text-lg font-semibold text-slate-500 mb-2">Всего слов в словаре</h3>
+                    <p id="home-total-words" class="text-4xl font-bold text-sky-600">0</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-100">
+                    <h3 class="text-lg font-semibold text-slate-500 mb-2">Слов выучено</h3>
+                    <p id="home-learned-words" class="text-4xl font-bold text-emerald-600">0</p>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <button onclick="startLearn('flashcard')" class="w-full bg-sky-600 text-white font-semibold py-4 px-6 rounded-lg shadow-md hover:bg-sky-700 transition-all text-lg flex items-center justify-center space-x-2">
+                    <span>🧠</span>
+                    <span>Начать (Карточки)</span>
+                </button>
+                <button onclick="startLearn('quiz')" class="w-full bg-white text-sky-700 border border-sky-600 font-semibold py-4 px-6 rounded-lg shadow-sm hover:bg-sky-50 transition-all text-lg flex items-center justify-center space-x-2">
+                    <span>✍️</span>
+                    <span>Начать (Викторина)</span>
+                </button>
+                 <button onclick="navigate('add-view')" class="w-full bg-emerald-600 text-white font-semibold py-4 px-6 rounded-lg shadow-md hover:bg-emerald-700 transition-all text-lg flex items-center justify-center space-x-2">
+                    <span>➕</span>
+                    <span>Добавить новое слово</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- View: Learn (Учить) -->
+        <div id="learn-view" class="view space-y-6">
+            <h1 class="text-3xl font-bold text-slate-800">Тренажер</h1>
+            <p class="text-slate-600">Практикуйте слова, чтобы запомнить их.</p>
+
+            <div id="no-words-message" class="hidden text-center p-6 bg-white rounded-lg shadow-md">
+                <p class="text-xl font-semibold text-slate-700">В вашем словаре пока нет слов.</p>
+                <p class="text-slate-500 mt-2">Пожалуйста, добавьте слова на вкладке "Добавить", чтобы начать обучение.</p>
+                <button onclick="navigate('add-view')" class="mt-4 bg-sky-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-sky-700 transition-all">
+                    Добавить слова
+                </button>
+            </div>
+
+            <div id="learn-container" class="space-y-4">
+                <!-- Exercise Type: Flashcard -->
+                <div id="flashcard-mode" class_="hidden space-y-4">
+                    <div id="flashcard" class="flip-card h-64 w-full cursor-pointer" onclick="flipCard()">
+                        <div class="flip-card-inner rounded-xl shadow-xl">
+                            <div id="flashcard-front" class="flip-card-front bg-white border-2 border-sky-200 rounded-xl p-4">
+                                <p class="text-4xl font-bold text-slate-800"></p>
+                            </div>
+                            <div id="flashcard-back" class="flip-card-back bg-sky-100 border-2 border-sky-300 rounded-xl p-4">
+                                <p class="text-4xl font-bold text-sky-800"></p>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="nextWord()" class="w-full bg-sky-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-sky-700 transition-all">
+                        Следующее слово
+                    </button>
+                </div>
+
+                <!-- Exercise Type: Quiz -->
+                <div id="quiz-mode" class="hidden space-y-4">
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-100 text-center">
+                        <p class="text-sm text-slate-500 mb-2">Как переводится?</p>
+                        <h2 id="quiz-question" class="text-3xl font-bold text-slate-800 mb-6"></h2>
+                    </div>
+                    <div id="quiz-options" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    </div>
+                    <div id="quiz-feedback" class="text-center font-semibold p-3 rounded-lg hidden"></div>
+                    <button onclick="nextWord()" id="quiz-next-btn" class="w-full bg-sky-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-sky-700 transition-all hidden">
+                        Следующее
+                    </button>
+                </div>
+                
+                <!-- Exercise Type: Spelling -->
+                <div id="spelling-mode" class="hidden space-y-4">
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-100 text-center">
+                        <p class="text-sm text-slate-500 mb-2">Напишите перевод:</p>
+                        <h2 id="spelling-question" class="text-3xl font-bold text-slate-800 mb-6"></h2>
+                    </div>
+                    <input type="text" id="spelling-input" class="w-full p-4 border-2 border-slate-300 rounded-lg text-lg focus:border-sky-500 focus:ring-sky-500" placeholder="Введите слово на английском...">
+                    <button onclick="checkSpelling()" class="w-full bg-emerald-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-emerald-700 transition-all">
+                        Проверить
+                    </button>
+                    <div id="spelling-feedback" class="text-center font-semibold p-3 rounded-lg hidden"></div>
+                    <button onclick="nextWord()" id="spelling-next-btn" class="w-full bg-sky-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-sky-700 transition-all hidden">
+                        Следующее
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- View: Dictionary (Словарь) -->
+        <div id="dictionary-view" class="view space-y-6">
+            <h1 class="text-3xl font-bold text-slate-800">Мой словарь</h1>
+            <p class="text-slate-600">Здесь хранятся все добавленные вами слова. Вы можете просмотреть их или удалить.</p>
+            <input type="text" id="dict-search" class="w-full p-3 border border-slate-300 rounded-lg" placeholder="🔍 Поиск по словарю...">
+            <div id="dictionary-list" class="space-y-3">
+                <p class="text-slate-500 text-center py-4">Ваш словарь пуст.</p>
+            </div>
+        </div>
+
+        <!-- View: Add Word (Добавить) -->
+        <div id="add-view" class="view space-y-6">
+            <h1 class="text-3xl font-bold text-slate-800">Добавить слово</h1>
+            
+            <!-- Tab Switcher -->
+            <div class="flex border-b border-slate-200">
+                <button data-tab="single" onclick="changeAddMode('single')" class="tab-btn w-1/2 py-3 text-center font-semibold text-sky-600 border-b-2 border-sky-600 transition-colors">
+                    Одно слово
+                </button>
+                <button data-tab="bulk" onclick="changeAddMode('bulk')" class="tab-btn w-1/2 py-3 text-center font-semibold text-slate-500 hover:text-sky-600 transition-colors">
+                    Массовый импорт
+                </button>
+            </div>
+            
+            <!-- Tab Content: Single Word -->
+            <div id="single-tab" class="tab-content active space-y-4">
+                <p class="text-slate-600">Введите слово на английском и его перевод на русский.</p>
+                <form id="add-word-form" class="space-y-4">
+                    <div>
+                        <label for="english-word" class="block text-sm font-medium text-slate-700 mb-1">Английское слово</label>
+                        <input type="text" id="english-word" class="w-full p-3 border border-slate-300 rounded-lg text-lg" required>
+                    </div>
+                    <div>
+                        <label for="russian-word" class="block text-sm font-medium text-slate-700 mb-1">Перевод на русский</label>
+                        <input type="text" id="russian-word" class="w-full p-3 border border-slate-300 rounded-lg text-lg" required>
+                    </div>
+                    
+                    <button type="submit" id="submit-single-btn" class="w-full bg-emerald-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-emerald-700 transition-all">
+                        Сохранить слово
+                    </button>
+                </form>
+            </div>
+
+            <!-- Tab Content: Bulk Import -->
+            <div id="bulk-tab" class="tab-content space-y-4">
+                <p class="text-slate-600">Вставьте список слов (одна пара на строку), используя разделитель, например:</p>
+                <p class="text-sm bg-slate-100 p-2 rounded-lg font-mono text-slate-700">
+                    Apple - Яблоко<br>
+                    Run: Бежать<br>
+                    Table | Стол
+                </p>
+                
+                <textarea id="bulk-words-input" rows="8" class="w-full p-3 border border-slate-300 rounded-lg text-lg" placeholder="Вставьте ваш список слов сюда..."></textarea>
+                
+                <button onclick="handleBulkImport()" id="submit-bulk-btn" class="w-full bg-emerald-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-emerald-700 transition-all">
+                    Сохранить слова
+                </button>
+            </div>
+            
+            <div id="add-word-feedback" class="text-center font-semibold p-3 rounded-lg hidden"></div>
+        </div>
+
+        <!-- View: Statistics (Статистика) -->
+        <div id="stats-view" class="view space-y-6">
+            <h1 class="text-3xl font-bold text-slate-800">Статистика</h1>
+            <p class="text-slate-600">Ваш прогресс в изучении слов.</p>
+            
+            <div class="bg-white p-4 rounded-xl shadow-lg border border-slate-100 space-y-3">
+                <h3 class="text-lg font-semibold text-slate-700 text-center">Распределение слов</h3>
+                <div class="chart-container" style="height: 250px;">
+                    <canvas id="mastery-chart"></canvas>
+                </div>
+            </div>
+            
+            <div class="bg-white p-4 rounded-xl shadow-lg border border-slate-100 space-y-3">
+                <h3 class="text-lg font-semibold text-slate-700 text-center">Активность (Последние 7 дней)</h3>
+                <div class="chart-container" style="height: 250px;">
+                    <canvas id="activity-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-inner h-16 flex justify-around items-center">
+        <button data-view="home-view" class="nav-btn flex flex-col items-center justify-center text-sky-600 w-full">
+            <span class="text-2xl">🏠</span>
+            <span class="text-xs font-medium">Главная</span>
+        </button>
+        <button data-view="learn-view" class="nav-btn flex flex-col items-center justify-center text-slate-500 w-full">
+            <span class="text-2xl">🧠</span>
+            <span class="text-xs font-medium">Учить</span>
+        </button>
+        <button data-view="dictionary-view" class="nav-btn flex flex-col items-center justify-center text-slate-500 w-full">
+            <span class="text-2xl">📚</span>
+            <span class="text-xs font-medium">Словарь</span>
+        </button>
+        <button data-view="add-view" class="nav-btn flex flex-col items-center justify-center text-slate-500 w-full">
+            <span class="text-2xl">➕</span>
+            <span class="text-xs font-medium">Добавить</span>
+        </button>
+        <button data-view="stats-view" class="nav-btn flex flex-col items-center justify-center text-slate-500 w-full">
+            <span class="text-2xl">📊</span>
+            <span class="text-xs font-medium">Статус</span>
+        </button>
+    </nav>
+
+    <script>
+        let tg;
+        let db = {
+            words: [],
+            stats: {
+                learnedDaily: {},
+            }
+        };
+        let state = {
+            currentView: 'home-view',
+            currentExercise: 'flashcard',
+            currentWordIndex: 0,
+            quizOptions: [],
+            wordQueue: [],
+            addMode: 'single' // 'single' or 'bulk'
+        };
+        
+        let masteryChartInstance = null;
+        let activityChartInstance = null;
+        
+        const DB_KEY = 'wordLearnerDB';
+
+        function saveDB() {
+            try {
+                localStorage.setItem(DB_KEY, JSON.stringify(db));
+            } catch (e) {
+                console.error("Error saving to localStorage", e);
+            }
+        }
+        
+        function loadDB() {
+            try {
+                const data = localStorage.getItem(DB_KEY);
+                if (data) {
+                    db = JSON.parse(data);
+                    if (!db.stats) db.stats = { learnedDaily: {} };
+                    if (!db.words) db.words = [];
+                }
+            } catch (e) {
+                console.error("Error loading from localStorage", e);
+                db = { words: [], stats: { learnedDaily: {} } };
+            }
+        }
+
+        function addWord(eng, rus) {
+            if (!eng || !rus) return false;
+            
+            eng = eng.trim();
+            rus = rus.trim();
+            
+            const exists = db.words.some(word => word.eng.toLowerCase() === eng.toLowerCase());
+            if (exists) {
+                return false; 
+            }
+            
+            const newWord = {
+                id: Date.now() + Math.random(), // Added random for safety when importing bulk
+                eng: eng,
+                rus: rus,
+                mastery: 0, // 0 - New, 1-4 - Learning, 5 - Mastered
+                lastPracticed: null
+            };
+            db.words.push(newWord);
+            return true;
+        }
+
+        function deleteWord(id) {
+            db.words = db.words.filter(word => word.id !== id);
+            saveDB();
+            renderDictionary();
+            renderHomeStats();
+            renderStatsCharts();
+        }
+        
+        function getWordsForExercise(count = 10) {
+            const notMastered = db.words.filter(w => w.mastery < 5);
+            notMastered.sort((a, b) => (a.lastPracticed || 0) - (b.lastPracticed || 0));
+            return shuffleArray(notMastered).slice(0, count);
+        }
+
+        function updateWordMastery(id, correct) {
+            const word = db.words.find(w => w.id === id);
+            if (!word) return;
+
+            if (correct) {
+                if (word.mastery < 5) word.mastery++;
+                if (word.mastery === 5) {
+                    logDailyActivity();
+                }
+            } else {
+                if (word.mastery > 0) word.mastery--;
+            }
+            word.lastPracticed = Date.now();
+            saveDB();
+        }
+
+        function logDailyActivity() {
+            const today = new Date().toISOString().split('T')[0];
+            if (!db.stats.learnedDaily) {
+                db.stats.learnedDaily = {};
+            }
+            db.stats.learnedDaily[today] = (db.stats.learnedDaily[today] || 0) + 1;
+            saveDB();
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+        
+        function navigate(viewId) {
+            document.querySelectorAll('.view').forEach(view => {
+                view.classList.remove('active');
+            });
+            document.getElementById(viewId).classList.add('active');
+            
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('text-sky-600');
+                btn.classList.add('text-slate-500');
+            });
+            
+            const activeBtn = document.querySelector(`.nav-btn[data-view="${viewId}"]`);
+            if (activeBtn) {
+                activeBtn.classList.add('text-sky-600');
+                activeBtn.classList.remove('text-slate-500');
+            }
+            
+            state.currentView = viewId;
+            
+            if (viewId === 'home-view') renderHomeStats();
+            if (viewId === 'dictionary-view') renderDictionary();
+            if (viewId === 'stats-view') renderStatsCharts();
+            if (viewId === 'add-view') setupAddWordView();
+            if (viewId === 'learn-view') {
+                if(tg) tg.MainButton.hide();
+            }
+        }
+        
+        function changeAddMode(mode) {
+            state.addMode = mode;
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('text-sky-600', 'border-sky-600');
+                btn.classList.add('text-slate-500', 'hover:text-sky-600');
+            });
+            
+            const activeBtn = document.querySelector(`.tab-btn[data-tab="${mode}"]`);
+            activeBtn.classList.add('text-sky-600', 'border-sky-600');
+            activeBtn.classList.remove('text-slate-500', 'hover:text-sky-600');
+            
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${mode}-tab`).classList.add('active');
+            
+            setupAddWordView();
+        }
+
+
+        function renderHomeStats() {
+            document.getElementById('home-total-words').textContent = db.words.length;
+            const learnedCount = db.words.filter(w => w.mastery === 5).length;
+            document.getElementById('home-learned-words').textContent = learnedCount;
+        }
+        
+        function renderDictionary() {
+            const listEl = document.getElementById('dictionary-list');
+            const search = document.getElementById('dict-search').value.toLowerCase();
+            
+            const filteredWords = db.words.filter(w => 
+                w.eng.toLowerCase().includes(search) || 
+                w.rus.toLowerCase().includes(search)
+            );
+            
+            if (filteredWords.length === 0) {
+                listEl.innerHTML = `<p class="text-slate-500 text-center py-4">
+                    ${db.words.length === 0 ? 'Ваш словарь пуст.' : 'Ничего не найдено.'}
+                </p>`;
+                return;
+            }
+            
+            listEl.innerHTML = filteredWords.map(word => `
+                <div class="bg-white p-4 rounded-lg shadow-sm border flex justify-between items-center">
+                    <div>
+                        <p class="text-lg font-semibold text-slate-800">${word.eng}</p>
+                        <p class="text-slate-600">${word.rus}</p>
+                        <p class="text-xs text-slate-400 mt-1">
+                            Мастерство: ${'🟩'.repeat(word.mastery)}${'⬜️'.repeat(5 - word.mastery)}
+                        </p>
+                    </div>
+                    <button onclick="deleteWord(${word.id})" class="text-red-500 hover:text-red-700 font-medium text-2xl p-2">&times;</button>
+                </div>
+            `).join('');
+        }
+
+        function setupAddWordView() {
+            // Hide all fallback buttons
+            document.getElementById('submit-single-btn').style.display = 'none';
+            document.getElementById('submit-bulk-btn').style.display = 'none';
+            
+            const feedbackEl = document.getElementById('add-word-feedback');
+            feedbackEl.classList.add('hidden');
+
+            if (tg) {
+                tg.MainButton.show();
+                tg.MainButton.offClick(handleFormSubmit); // Clear previous handler
+                tg.MainButton.offClick(handleBulkImport);
+                
+                if (state.addMode === 'single') {
+                    tg.MainButton.setText('Сохранить слово');
+                    tg.MainButton.onClick(handleFormSubmit);
+                } else {
+                    tg.MainButton.setText('Сохранить слова из списка');
+                    tg.MainButton.onClick(handleBulkImport);
+                }
+            } else {
+                // Show fallback buttons if not in Telegram
+                if (state.addMode === 'single') {
+                    document.getElementById('submit-single-btn').style.display = 'block';
+                } else {
+                    document.getElementById('submit-bulk-btn').style.display = 'block';
+                }
+            }
+        }
+
+        // Handler for single word submission (used by MainButton in 'single' mode)
+        function handleFormSubmit() {
+            const engInput = document.getElementById('english-word');
+            const rusInput = document.getElementById('russian-word');
+            const feedbackEl = document.getElementById('add-word-feedback');
+            
+            const eng = engInput.value;
+            const rus = rusInput.value;
+            
+            const success = addWord(eng, rus);
+            
+            if (success) {
+                saveDB();
+                feedbackEl.innerHTML = `Слово "<b>${eng}</b>" добавлено!`;
+                feedbackEl.classList.remove('hidden', 'bg-red-100', 'text-red-700');
+                feedbackEl.classList.add('bg-emerald-100', 'text-emerald-700');
+                engInput.value = '';
+                rusInput.value = '';
+                engInput.focus();
+                
+                if (tg) {
+                    tg.HapticFeedback.notificationOccurred('success');
+                }
+                
+                setTimeout(() => {
+                    feedbackEl.classList.add('hidden');
+                    navigate('dictionary-view');
+                }, 1500);
+
+            } else {
+                feedbackEl.innerHTML = eng ? `Слово "<b>${eng}</b>" уже есть или поля пусты.` : `Поля не могут быть пустыми.`;
+                feedbackEl.classList.remove('hidden', 'bg-emerald-100', 'text-emerald-700');
+                feedbackEl.classList.add('bg-red-100', 'text-red-700');
+                if (tg) {
+                    tg.HapticFeedback.notificationOccurred('error');
+                }
+            }
+        }
+
+        // Handler for bulk word submission (used by MainButton in 'bulk' mode)
+        function handleBulkImport() {
+            const inputArea = document.getElementById('bulk-words-input');
+            const text = inputArea.value.trim();
+            const feedbackEl = document.getElementById('add-word-feedback');
+            
+            if (!text) {
+                feedbackEl.innerHTML = `Список пуст. Вставьте слова для импорта.`;
+                feedbackEl.classList.remove('hidden', 'bg-emerald-100', 'text-emerald-700');
+                feedbackEl.classList.add('bg-red-100', 'text-red-700');
+                if (tg) tg.HapticFeedback.notificationOccurred('error');
+                return;
+            }
+
+            const lines = text.split('\n');
+            let addedCount = 0;
+            let skippedCount = 0;
+            const separatorRegex = /[\-\:\=\|]/; // Supports -, :, =, | as separators
+
+            lines.forEach(line => {
+                line = line.trim();
+                if (!line) return;
+
+                // Используем поиск по регулярному выражению, чтобы разделить строку только по первому разделителю
+                const separatorMatch = line.match(separatorRegex);
+                
+                if (separatorMatch) {
+                    const separatorIndex = separatorMatch.index;
+                    const eng = line.substring(0, separatorIndex).trim();
+                    const rus = line.substring(separatorIndex + separatorMatch[0].length).trim();
+                    
+                    if (addWord(eng, rus)) {
+                        addedCount++;
+                    } else {
+                        skippedCount++;
+                    }
+                } else {
+                    skippedCount++;
+                }
+            });
+            
+            saveDB();
+            
+            if (addedCount > 0) {
+                inputArea.value = ''; // Clear input on success
+                feedbackEl.innerHTML = `Успешно добавлено слов: <b>${addedCount}</b>. Пропущено (дубликаты/ошибки): <b>${skippedCount}</b>.`;
+                feedbackEl.classList.remove('hidden', 'bg-red-100', 'text-red-700');
+                feedbackEl.classList.add('bg-emerald-100', 'text-emerald-700');
+                if (tg) tg.HapticFeedback.notificationOccurred('success');
+                
+                setTimeout(() => {
+                    feedbackEl.classList.add('hidden');
+                    navigate('dictionary-view');
+                }, 2500);
+            } else {
+                 feedbackEl.innerHTML = `Не удалось добавить ни одного слова. Проверьте формат ("слово - перевод"). Пропущено: <b>${skippedCount}</b>.`;
+                feedbackEl.classList.remove('hidden', 'bg-emerald-100', 'text-emerald-700');
+                feedbackEl.classList.add('bg-red-100', 'text-red-700');
+                if (tg) tg.HapticFeedback.notificationOccurred('error');
+            }
+        }
+
+
+        function renderStatsCharts() {
+            const masteryCtx = document.getElementById('mastery-chart').getContext('2d');
+            const activityCtx = document.getElementById('activity-chart').getContext('2d');
+            
+            const newCount = db.words.filter(w => w.mastery === 0).length;
+            const learningCount = db.words.filter(w => w.mastery > 0 && w.mastery < 5).length;
+            const masteredCount = db.words.filter(w => w.mastery === 5).length;
+
+            if (masteryChartInstance) masteryChartInstance.destroy();
+            masteryChartInstance = new Chart(masteryCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Новые', 'В процессе', 'Выученные'],
+                    datasets: [{
+                        data: [newCount, learningCount, masteredCount],
+                        backgroundColor: ['#60A5FA', '#FACC15', '#34D399'],
+                        borderColor: '#ffffff',
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            const labels = [];
+            const data = [];
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const dateKey = d.toISOString().split('T')[0];
+                const dayLabel = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+                
+                labels.push(dayLabel);
+                data.push(db.stats.learnedDaily[dateKey] || 0);
+            }
+
+            if (activityChartInstance) activityChartInstance.destroy();
+            activityChartInstance = new Chart(activityCtx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Слов выучено',
+                        data: data,
+                        backgroundColor: '#38BDF8',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { precision: 0 }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function startLearn(mode) {
+            state.currentExercise = mode;
+            state.wordQueue = getWordsForExercise();
+            state.currentWordIndex = 0;
+            
+            navigate('learn-view');
+            
+            if (state.wordQueue.length === 0) {
+                document.getElementById('no-words-message').classList.remove('hidden');
+                document.getElementById('learn-container').classList.add('hidden');
+            } else {
+                document.getElementById('no-words-message').classList.add('hidden');
+                document.getElementById('learn-container').classList.remove('hidden');
+                loadWord();
+            }
+        }
+        
+        function loadWord() {
+            if (state.currentWordIndex >= state.wordQueue.length) {
+                showCompletionScreen();
+                return;
+            }
+            
+            const word = state.wordQueue[state.currentWordIndex];
+            
+            document.getElementById('flashcard-mode').classList.add('hidden');
+            document.getElementById('quiz-mode').classList.add('hidden');
+            document.getElementById('spelling-mode').classList.add('hidden');
+            
+            if (state.currentExercise === 'flashcard') {
+                document.getElementById('flashcard-mode').classList.remove('hidden');
+                document.getElementById('flashcard').classList.remove('is-flipped');
+                document.querySelector('#flashcard-front p').textContent = word.eng;
+                document.querySelector('#flashcard-back p').textContent = word.rus;
+            } 
+            else if (state.currentExercise === 'quiz') {
+                document.getElementById('quiz-mode').classList.remove('hidden');
+                document.getElementById('quiz-question').textContent = word.eng;
+                document.getElementById('quiz-feedback').classList.add('hidden');
+                document.getElementById('quiz-next-btn').classList.add('hidden');
+                
+                const optionsContainer = document.getElementById('quiz-options');
+                optionsContainer.innerHTML = '';
+                
+                let options = [word];
+                let otherWords = shuffleArray(db.words.filter(w => w.id !== word.id));
+                options.push(...otherWords.slice(0, 3));
+                
+                if (options.length < 4) {
+                    const dummy = ['Кот', 'Собака', 'Дом', 'Машина'];
+                    for(let i = 0; options.length < 4; i++) {
+                         if (!options.some(o => o.rus === dummy[i])) {
+                             options.push({id: 'dummy'+i, rus: dummy[i]});
+                         }
+                    }
+                }
+
+                state.quizOptions = shuffleArray(options);
+                
+                state.quizOptions.forEach(option => {
+                    const btn = document.createElement('button');
+                    btn.className = 'w-full p-4 bg-white border-2 border-slate-200 rounded-lg text-lg font-medium text-slate-700 hover:border-sky-400 quiz-option-btn';
+                    btn.textContent = option.rus;
+                    btn.onclick = () => checkQuiz(option.id === word.id, btn);
+                    optionsContainer.appendChild(btn);
+                });
+            }
+            else if (state.currentExercise === 'spelling') {
+                document.getElementById('spelling-mode').classList.remove('hidden');
+                document.getElementById('spelling-question').textContent = word.rus;
+                document.getElementById('spelling-input').value = '';
+                document.getElementById('spelling-input').disabled = false;
+                document.getElementById('spelling-feedback').classList.add('hidden');
+                document.getElementById('spelling-next-btn').classList.add('hidden');
+                document.querySelector('#spelling-mode button[onclick="checkSpelling()"]').classList.remove('hidden');
+                document.getElementById('spelling-input').focus();
+            }
+        }
+        
+        function flipCard() {
+            document.getElementById('flashcard').classList.toggle('is-flipped');
+        }
+        
+        function checkQuiz(isCorrect, btn) {
+            document.querySelectorAll('.quiz-option-btn').forEach(b => {
+                b.disabled = true;
+                b.classList.remove('hover:border-sky-400');
+            });
+            
+            const feedbackEl = document.getElementById('quiz-feedback');
+            const word = state.wordQueue[state.currentWordIndex];
+            
+            if (isCorrect) {
+                btn.classList.add('bg-emerald-100', 'border-emerald-400', 'text-emerald-800');
+                feedbackEl.textContent = 'Правильно!';
+                feedbackEl.className = 'text-center font-semibold p-3 rounded-lg bg-emerald-100 text-emerald-700';
+                updateWordMastery(word.id, true);
+            } else {
+                btn.classList.add('bg-red-100', 'border-red-400', 'text-red-800');
+                feedbackEl.innerHTML = `Неверно. Правильный ответ: <b>${word.rus}</b>`;
+                feedbackEl.className = 'text-center font-semibold p-3 rounded-lg bg-red-100 text-red-700';
+                updateWordMastery(word.id, false);
+                
+                document.querySelectorAll('.quiz-option-btn').forEach(b => {
+                    if (b.textContent === word.rus) {
+                        b.classList.add('bg-emerald-100', 'border-emerald-400', 'text-emerald-800');
+                    }
+                });
+            }
+            
+            feedbackEl.classList.remove('hidden');
+            document.getElementById('quiz-next-btn').classList.remove('hidden');
+        }
+
+        function checkSpelling() {
+            const input = document.getElementById('spelling-input');
+            const answer = input.value.trim().toLowerCase();
+            const word = state.wordQueue[state.currentWordIndex];
+            const correctAnswer = word.eng.toLowerCase();
+            
+            const feedbackEl = document.getElementById('spelling-feedback');
+            
+            input.disabled = true;
+            
+            if (answer === correctAnswer) {
+                feedbackEl.textContent = 'Правильно!';
+                feedbackEl.className = 'text-center font-semibold p-3 rounded-lg bg-emerald-100 text-emerald-700';
+                input.classList.remove('border-slate-300', 'border-red-500');
+                input.classList.add('border-emerald-500');
+                updateWordMastery(word.id, true);
+            } else {
+                feedbackEl.innerHTML = `Неверно. Правильный ответ: <b>${word.eng}</b>`;
+                feedbackEl.className = 'text-center font-semibold p-3 rounded-lg bg-red-100 text-red-700';
+                input.classList.remove('border-slate-300', 'border-emerald-500');
+                input.classList.add('border-red-500');
+                updateWordMastery(word.id, false);
+            }
+            
+            feedbackEl.classList.remove('hidden');
+            document.getElementById('spelling-next-btn').classList.remove('hidden');
+            document.querySelector('#spelling-mode button[onclick="checkSpelling()"]').classList.add('hidden');
+        }
+
+        function nextWord() {
+            if (state.currentExercise === 'flashcard') {
+                const word = state.wordQueue[state.currentWordIndex];
+                updateWordMastery(word.id, true); // На карточках просто считаем за практику
+            }
+            
+            state.currentWordIndex++;
+            loadWord();
+        }
+        
+        function showCompletionScreen() {
+            const learnContainer = document.getElementById('learn-container');
+            learnContainer.innerHTML = `
+                <div class="text-center p-6 bg-white rounded-lg shadow-md">
+                    <p class="text-2xl font-semibold text-sky-700">Отличная работа!</p>
+                    <p class="text-slate-600 mt-2">Тренировка завершена. Вы можете начать заново или вернуться на главный экран.</p>
+                    <button onclick="startLearn('${state.currentExercise}')" class="mt-4 bg-sky-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-sky-700 transition-all">
+                        Начать заново
+                    </button>
+                    <button onclick="navigate('home-view')" class="mt-4 bg-white text-sky-700 border border-sky-600 font-semibold py-2 px-4 rounded-lg shadow-sm hover:bg-sky-50 transition-all">
+                        На главную
+                    </button>
+                </div>
+            `;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDB();
+            
+            try {
+                tg = window.Telegram.WebApp;
+                tg.ready();
+                tg.expand();
+                tg.setHeaderColor('#F8FAFC'); 
+                tg.setBackgroundColor('#F8FAFC'); 
+            } catch (e) {
+                console.warn("Telegram WebApp script not found or failed to initialize.");
+            }
+
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    navigate(btn.dataset.view);
+                });
+            });
+
+            document.getElementById('dict-search').addEventListener('input', renderDictionary);
+
+            // Using pure JS event listener for form submission to handle fallback logic
+            document.getElementById('add-word-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleFormSubmit();
+            });
+
+            // Fallback for bulk import form submission (if not in TWA)
+            document.getElementById('submit-bulk-btn').addEventListener('click', (e) => {
+                e.preventDefault();
+                handleBulkImport();
+            });
+
+            document.getElementById('spelling-input').addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    if(!document.getElementById('spelling-next-btn').classList.contains('hidden')) {
+                         nextWord();
+                    } else if (!document.querySelector('#spelling-mode button[onclick="checkSpelling()"]').classList.contains('hidden')) {
+                         checkSpelling();
+                    }
+                }
+            });
+
+            changeAddMode('single'); // Set initial mode
+            navigate('home-view');
+        });
+
+    </script>
+</body>
+</html>
