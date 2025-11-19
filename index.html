@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LinguaFlow SRS</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #f0f2f5);
+            --text-color: var(--tg-theme-text-color, #000000);
+            --hint-color: var(--tg-theme-hint-color, #999999);
+            --button-color: var(--tg-theme-button-color, #3390ec);
+            --button-text-color: var(--tg-theme-button-text-color, #ffffff);
+            --card-bg: var(--tg-theme-secondary-bg-color, #ffffff);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #app {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            max-width: 600px;
+            margin: 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Loader */
+       .loader-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex: 1;
+            font-size: 1.1em;
+            color: var(--hint-color);
+        }
+
+        /* Flashcard Scene */
+       .scene {
+            flex: 1;
+            perspective: 1000px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+       .card {
+            width: 100%;
+            height: 400px; /* Фиксированная высота для удобства */
+            max-height: 60vh;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+            cursor: pointer;
+        }
+
+       .card.is-flipped {
+            transform: rotateY(180deg);
+        }
+
+       .card__face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 24px;
+            background-color: var(--card-bg);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 30px;
+            box-sizing: border-box;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+       .card__face--back {
+            transform: rotateY(180deg);
+            background-color: #fff8e1; /* Легкий оттенок для обратной стороны */
+            color: #333;
+        }
+
+        /* Typography */
+       .word-target {
+            font-size: 2.5em;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+
+       .word-native {
+            font-size: 2em;
+            font-weight: 600;
+            color: #444;
+            margin-bottom: 20px;
+        }
+
+       .context {
+            font-style: italic;
+            color: #666;
+            line-height: 1.5;
+        }
+
+       .hint {
+            position: absolute;
+            bottom: 20px;
+            font-size: 0.85em;
+            color: var(--hint-color);
+            opacity: 0.7;
+        }
+
+        /* Controls */
+       .controls {
+            display: flex;
+            gap: 12px;
+            height: 56px;
+        }
+
+       .btn {
+            flex: 1;
+            border: none;
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            color: white;
+        }
+
+       .btn:active {
+            transform: scale(0.96);
+            opacity: 0.9;
+        }
+
+       .btn-hard { background-color: #ff4757; box-shadow: 0 4px 12px rgba(255, 71, 87, 0.3); }
+       .btn-good { background-color: #2ed573; box-shadow: 0 4px 12px rgba(46, 213, 115, 0.3); }
+
+       .hidden { display: none!important; }
+        
+        /* Empty State */
+       .empty-state {
+            text-align: center;
+            margin-top: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="loader" class="loader-container">
+            <div>Синхронизация словаря...</div>
+        </div>
+
+        <div id="game" class="hidden" style="display: flex; flex-direction: column; height: 100%;">
+            <div class="scene">
+                <div class="card" id="flashcard">
+                    <div class="card__face card__face--front">
+                        <div class="word-target" id="card-front-text">Loading...</div>
+                        <div class="hint">Нажми, чтобы перевернуть</div>
+                    </div>
+                    <div class="card__face card__face--back">
+                        <div class="word-native" id="card-back-trans">...</div>
+                        <div class="context" id="card-back-context">...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls hidden" id="controls">
+                <button class="btn btn-hard" onclick="handleGrade('hard')">Забыл (1 дн)</button>
+                <button class="btn btn-good" onclick="handleGrade('good')">Помню (Dal'she)</button>
+            </div>
+        </div>
+
+        <div id="done" class="empty-state hidden">
+            <div style="font-size: 4em;">🎉</div>
+            <h2>Все слова на сегодня выучены!</h2>
+            <p style="color: var(--hint-color);">Отличная работа.</p>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // ==========================================
+        // НАСТРОЙКИ (ВСТАВЬТЕ СВОЙ URL НИЖЕ)
+        // URL должен выглядеть как: https://.../webhook
+        // БЕЗ "/get-cards" на конце.
+        // ==========================================
+        const BASE_WEBHOOK_URL = "https://nicola-suboptical-avelina.ngrok-free.dev/webhook-test/get-cards"; 
+        
+        let deck =;
+        let currentIndex = 0;
+
+        // Инициализация
+        async function initApp() {
+            try {
+                // Получаем ID пользователя из Telegram (или ставим тестовый, если открыто в браузере)
+                const userId = tg.initDataUnsafe?.user?.id |
+
+| 'TEST_USER_1';
+                
+                // Запрос к n8n
+                const response = await fetch(`${BASE_WEBHOOK_URL}/get-cards?userId=${userId}`);
+                
+                if (!response.ok) throw new Error("Ошибка сети");
+                
+                const data = await response.json();
+                // n8n может вернуть { cards: [...] } или просто [...]
+                deck = data.cards |
+
+| data ||;
+
+                document.getElementById('loader').classList.add('hidden');
+
+                if (deck.length > 0) {
+                    document.getElementById('game').classList.remove('hidden');
+                    renderCard(0);
+                } else {
+                    document.getElementById('done').classList.remove('hidden');
+                }
+
+            } catch (e) {
+                document.getElementById('loader').innerText = "Ошибка: " + e.message;
+                console.error(e);
+            }
+        }
+
+        function renderCard(index) {
+            if (index >= deck.length) {
+                document.getElementById('game').classList.add('hidden');
+                document.getElementById('done').classList.remove('hidden');
+                tg.HapticFeedback.notificationOccurred('success');
+                return;
+            }
+
+            const cardData = deck[index];
+            
+            // Заполнение данными
+            document.getElementById('card-front-text').innerText = cardData.word_target;
+            document.getElementById('card-back-trans').innerText = cardData.word_native;
+            document.getElementById('card-back-context').innerText = cardData.context |
+
+| "";
+
+            // Сброс состояния (переворот обратно)
+            const cardEl = document.getElementById('flashcard');
+            cardEl.classList.remove('is-flipped');
+            document.getElementById('controls').classList.add('hidden');
+        }
+
+        // Обработчик клика по карте
+        document.getElementById('flashcard').addEventListener('click', function() {
+            this.classList.toggle('is-flipped');
+            // Показываем кнопки только если карта перевернута (рубашкой вверх)
+            if (this.classList.contains('is-flipped')) {
+                document.getElementById('controls').classList.remove('hidden');
+            } else {
+                document.getElementById('controls').classList.add('hidden');
+            }
+        });
+
+        // Обработка ответа (Знаю / Не знаю)
+        async function handleGrade(grade) {
+            const currentCard = deck[currentIndex];
+            
+            // Отправка данных в n8n (не ждем ответа, чтобы интерфейс был быстрым)
+            fetch(`${BASE_WEBHOOK_URL}/submit-review`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cardId: currentCard.card_id,
+                    grade: grade,
+                    currentBox: currentCard.box
+                })
+            }).catch(err => console.error("Sync error:", err));
+
+            // Переход к следующей
+            currentIndex++;
+            renderCard(currentIndex);
+        }
+
+        // Запуск
+        initApp();
+    </script>
+</body>
+</html>
