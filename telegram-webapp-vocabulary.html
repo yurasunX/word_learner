@@ -1,0 +1,549 @@
+import React, { useState, useEffect } from 'react';
+import { Zap, BookOpen, Upload, Settings, TrendingUp, Check, X, Volume2, List, Clock } from 'lucide-react';
+
+const EnglishLearningApp = () => {
+  const [currentView, setCurrentView] = useState('home');
+  const [words, setWords] = useState([]);
+  const [currentCard, setCurrentCard] = useState(null);
+  const [isFlipped, setIsFlipped] = useState(false);
+  const [score, setScore] = useState({ correct: 0, total: 0 });
+  const [quizAnswer, setQuizAnswer] = useState('');
+  const [showResult, setShowResult] = useState(false);
+  const [notificationTime, setNotificationTime] = useState('09:00');
+  const [dailyGoal, setDailyGoal] = useState(20);
+
+  // Telegram Web App initialization
+  useEffect(() => {
+    if (window.Telegram?.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+      tg.MainButton.setText('Готово');
+      tg.BackButton.onClick(() => setCurrentView('home'));
+      
+      loadUserData();
+    }
+  }, []);
+
+  const loadUserData = async () => {
+    const mockWords = [
+      { id: 1, english: 'Beautiful', russian: 'Красивый', level: 1, lastReviewed: null },
+      { id: 2, english: 'Challenge', russian: 'Вызов', level: 1, lastReviewed: null },
+      { id: 3, english: 'Opportunity', russian: 'Возможность', level: 1, lastReviewed: null },
+      { id: 4, english: 'Development', russian: 'Развитие', level: 1, lastReviewed: null },
+      { id: 5, english: 'Experience', russian: 'Опыт', level: 1, lastReviewed: null }
+    ];
+    setWords(mockWords);
+  };
+
+  const sendToN8n = async (endpoint, data) => {
+    const webhookUrl = `https://your-n8n-instance.com/webhook/${endpoint}`;
+    
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: window.Telegram?.WebApp?.initDataUnsafe?.user?.id,
+          ...data
+        })
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('N8n request failed:', error);
+      return null;
+    }
+  };
+
+  const startFlashcards = () => {
+    if (words.length === 0) return;
+    const randomWord = words[Math.floor(Math.random() * words.length)];
+    setCurrentCard(randomWord);
+    setIsFlipped(false);
+    setCurrentView('flashcards');
+  };
+
+  const flipCard = () => {
+    setIsFlipped(!isFlipped);
+  };
+
+  const markCard = async (known) => {
+    if (!currentCard) return;
+    
+    const newScore = known 
+      ? { correct: score.correct + 1, total: score.total + 1 }
+      : { correct: score.correct, total: score.total + 1 };
+    
+    setScore(newScore);
+    
+    await sendToN8n('card-result', {
+      wordId: currentCard.id,
+      known,
+      timestamp: new Date().toISOString()
+    });
+    
+    const randomWord = words[Math.floor(Math.random() * words.length)];
+    setCurrentCard(randomWord);
+    setIsFlipped(false);
+  };
+
+  const startQuiz = () => {
+    if (words.length === 0) return;
+    const randomWord = words[Math.floor(Math.random() * words.length)];
+    setCurrentCard(randomWord);
+    setQuizAnswer('');
+    setShowResult(false);
+    setCurrentView('quiz');
+  };
+
+  const checkQuizAnswer = async () => {
+    if (!currentCard) return;
+    
+    const isCorrect = quizAnswer.toLowerCase().trim() === currentCard.russian.toLowerCase().trim();
+    setShowResult(true);
+    
+    const newScore = isCorrect
+      ? { correct: score.correct + 1, total: score.total + 1 }
+      : { correct: score.correct, total: score.total + 1 };
+    
+    setScore(newScore);
+    
+    await sendToN8n('quiz-result', {
+      wordId: currentCard.id,
+      correct: isCorrect,
+      userAnswer: quizAnswer,
+      timestamp: new Date().toISOString()
+    });
+    
+    setTimeout(() => {
+      const randomWord = words[Math.floor(Math.random() * words.length)];
+      setCurrentCard(randomWord);
+      setQuizAnswer('');
+      setShowResult(false);
+    }, 2000);
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const content = event.target.result;
+      
+      const result = await sendToN8n('upload-words', {
+        content,
+        filename: file.name,
+        type: file.type
+      });
+      
+      if (result?.words) {
+        setWords([...words, ...result.words]);
+        alert(`Добавлено ${result.words.length} новых слов!`);
+        setCurrentView('home');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const saveNotificationSettings = async () => {
+    await sendToN8n('save-settings', {
+      notificationTime,
+      dailyGoal
+    });
+    alert('Настройки сохранены!');
+  };
+
+  const speakWord = (text) => {
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      speechSynthesis.speak(utterance);
+    }
+  };
+
+  if (currentView === 'home') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <div className="max-w-md mx-auto">
+          <div className="text-center mb-8 pt-4">
+            <h1 className="text-3xl font-bold text-indigo-900 mb-2">English Master</h1>
+            <p className="text-indigo-600">Изучай английский легко и эффективно</p>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm text-gray-500">Прогресс сегодня</p>
+                <p className="text-2xl font-bold text-indigo-900">
+                  {score.total}/{dailyGoal}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-500">Точность</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0}%
+                </p>
+              </div>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3">
+              <div 
+                className="bg-gradient-to-r from-indigo-500 to-purple-600 h-3 rounded-full transition-all"
+                style={{ width: `${Math.min((score.total / dailyGoal) * 100, 100)}%` }}
+              ></div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={startFlashcards}
+              className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl p-4 flex items-center justify-between hover:shadow-lg transition"
+            >
+              <div className="flex items-center gap-3">
+                <BookOpen className="w-6 h-6" />
+                <div className="text-left">
+                  <p className="font-semibold">Карточки</p>
+                  <p className="text-sm opacity-90">Перевод в обе стороны</p>
+                </div>
+              </div>
+              <span className="text-sm opacity-75">{words.length} слов</span>
+            </button>
+
+            <button
+              onClick={startQuiz}
+              className="w-full bg-gradient-to-r from-pink-500 to-rose-600 text-white rounded-xl p-4 flex items-center justify-between hover:shadow-lg transition"
+            >
+              <div className="flex items-center gap-3">
+                <Zap className="w-6 h-6" />
+                <div className="text-left">
+                  <p className="font-semibold">Быстрый тест</p>
+                  <p className="text-sm opacity-90">Проверь свои знания</p>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setCurrentView('upload')}
+              className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl p-4 flex items-center justify-between hover:shadow-lg transition"
+            >
+              <div className="flex items-center gap-3">
+                <Upload className="w-6 h-6" />
+                <div className="text-left">
+                  <p className="font-semibold">Загрузить слова</p>
+                  <p className="text-sm opacity-90">Свой список или текст</p>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setCurrentView('settings')}
+              className="w-full bg-white border-2 border-indigo-200 text-indigo-900 rounded-xl p-4 flex items-center justify-between hover:shadow-lg transition"
+            >
+              <div className="flex items-center gap-3">
+                <Settings className="w-6 h-6" />
+                <div className="text-left">
+                  <p className="font-semibold">Настройки</p>
+                  <p className="text-sm text-gray-500">Уведомления и цели</p>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'flashcards' && currentCard) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100 p-4 flex items-center justify-center">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-6">
+            <p className="text-indigo-900 font-medium">
+              {score.total} / {dailyGoal} слов
+            </p>
+            <p className="text-sm text-indigo-600">
+              Точность: {score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0}%
+            </p>
+          </div>
+
+          <div
+            onClick={flipCard}
+            className="bg-white rounded-3xl shadow-2xl p-12 mb-6 cursor-pointer transform transition-all hover:scale-105 min-h-[300px] flex items-center justify-center"
+          >
+            <div className="text-center">
+              <p className="text-5xl font-bold text-indigo-900 mb-4">
+                {isFlipped ? currentCard.russian : currentCard.english}
+              </p>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  speakWord(currentCard.english);
+                }}
+                className="text-indigo-500 hover:text-indigo-700"
+              >
+                <Volume2 className="w-8 h-8 mx-auto" />
+              </button>
+              <p className="text-sm text-gray-400 mt-4">
+                {isFlipped ? 'Нажми для обратного перевода' : 'Нажми чтобы увидеть перевод'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-4">
+            <button
+              onClick={() => markCard(false)}
+              className="flex-1 bg-red-500 text-white rounded-2xl py-4 flex items-center justify-center gap-2 hover:bg-red-600 transition"
+            >
+              <X className="w-6 h-6" />
+              <span className="font-semibold">Не знаю</span>
+            </button>
+            <button
+              onClick={() => markCard(true)}
+              className="flex-1 bg-green-500 text-white rounded-2xl py-4 flex items-center justify-center gap-2 hover:bg-green-600 transition"
+            >
+              <Check className="w-6 h-6" />
+              <span className="font-semibold">Знаю</span>
+            </button>
+          </div>
+
+          <button
+            onClick={() => setCurrentView('home')}
+            className="w-full mt-4 text-indigo-600 font-medium"
+          >
+            Вернуться домой
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'quiz' && currentCard) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 to-rose-100 p-4 flex items-center justify-center">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-6">
+            <p className="text-rose-900 font-medium">
+              {score.total} / {dailyGoal} вопросов
+            </p>
+            <p className="text-sm text-rose-600">
+              Правильно: {score.correct} ({score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0}%)
+            </p>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-2xl p-8 mb-6">
+            <p className="text-sm text-gray-500 mb-2">Переведите слово:</p>
+            <div className="flex items-center justify-center gap-4 mb-8">
+              <p className="text-4xl font-bold text-rose-900">{currentCard.english}</p>
+              <button
+                onClick={() => speakWord(currentCard.english)}
+                className="text-rose-500 hover:text-rose-700"
+              >
+                <Volume2 className="w-8 h-8" />
+              </button>
+            </div>
+
+            {!showResult ? (
+              <>
+                <input
+                  type="text"
+                  value={quizAnswer}
+                  onChange={(e) => setQuizAnswer(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && checkQuizAnswer()}
+                  placeholder="Введите перевод..."
+                  className="w-full px-6 py-4 border-2 border-rose-200 rounded-2xl text-lg mb-4 focus:outline-none focus:border-rose-500"
+                  autoFocus
+                />
+                <button
+                  onClick={checkQuizAnswer}
+                  className="w-full bg-gradient-to-r from-pink-500 to-rose-600 text-white rounded-2xl py-4 font-semibold hover:shadow-lg transition"
+                >
+                  Проверить
+                </button>
+              </>
+            ) : (
+              <div className={`text-center p-6 rounded-2xl ${
+                quizAnswer.toLowerCase().trim() === currentCard.russian.toLowerCase().trim()
+                  ? 'bg-green-100'
+                  : 'bg-red-100'
+              }`}>
+                <p className={`text-2xl font-bold mb-2 ${
+                  quizAnswer.toLowerCase().trim() === currentCard.russian.toLowerCase().trim()
+                    ? 'text-green-700'
+                    : 'text-red-700'
+                }`}>
+                  {quizAnswer.toLowerCase().trim() === currentCard.russian.toLowerCase().trim()
+                    ? '✓ Правильно!'
+                    : '✗ Неправильно'}
+                </p>
+                <p className="text-lg text-gray-700">
+                  Правильный ответ: <span className="font-bold">{currentCard.russian}</span>
+                </p>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => setCurrentView('home')}
+            className="w-full text-rose-600 font-medium"
+          >
+            Вернуться домой
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'upload') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-100 p-4">
+        <div className="max-w-md mx-auto pt-8">
+          <h2 className="text-2xl font-bold text-emerald-900 mb-6 text-center">
+            Загрузить слова
+          </h2>
+
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h3 className="font-semibold text-emerald-900 mb-3 flex items-center gap-2">
+                <Upload className="w-5 h-5" />
+                Загрузить файл
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Поддерживаемые форматы: TXT, CSV, JSON. AI автоматически распознает и добавит слова.
+              </p>
+              <label className="block">
+                <input
+                  type="file"
+                  accept=".txt,.csv,.json"
+                  onChange={handleFileUpload}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-3 file:px-6 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
+                />
+              </label>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h3 className="font-semibold text-emerald-900 mb-3 flex items-center gap-2">
+                <List className="w-5 h-5" />
+                Вставить список
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Вставьте список слов или текст. AI автоматически извлечет и переведет слова.
+              </p>
+              <textarea
+                placeholder="Например:
+beautiful - красивый
+challenge - вызов
+или просто текст..."
+                className="w-full h-40 px-4 py-3 border-2 border-emerald-200 rounded-xl focus:outline-none focus:border-emerald-500 text-sm"
+              ></textarea>
+              <button
+                onClick={async () => {
+                  const text = document.querySelector('textarea').value;
+                  if (!text.trim()) return;
+                  
+                  await sendToN8n('process-text', { text });
+                  alert('Слова отправлены на обработку!');
+                }}
+                className="w-full mt-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl py-3 font-semibold hover:shadow-lg transition"
+              >
+                Обработать текст
+              </button>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setCurrentView('home')}
+            className="w-full mt-6 text-emerald-600 font-medium"
+          >
+            ← Назад
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'settings') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-blue-100 p-4">
+        <div className="max-w-md mx-auto pt-8">
+          <h2 className="text-2xl font-bold text-indigo-900 mb-6 text-center">
+            Настройки
+          </h2>
+
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h3 className="font-semibold text-indigo-900 mb-4 flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                Уведомления
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-2">
+                    Время напоминания
+                  </label>
+                  <input
+                    type="time"
+                    value={notificationTime}
+                    onChange={(e) => setNotificationTime(e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-2">
+                    Ежедневная цель (слов)
+                  </label>
+                  <input
+                    type="number"
+                    value={dailyGoal}
+                    onChange={(e) => setDailyGoal(Number(e.target.value))}
+                    className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5" />
+                Статистика
+              </h3>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Всего слов</span>
+                  <span className="font-bold text-indigo-900">{words.length}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Изучено сегодня</span>
+                  <span className="font-bold text-indigo-900">{score.total}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Точность</span>
+                  <span className="font-bold text-green-600">
+                    {score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={saveNotificationSettings}
+              className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl py-4 font-semibold hover:shadow-lg transition"
+            >
+              Сохранить настройки
+            </button>
+          </div>
+
+          <button
+            onClick={() => setCurrentView('home')}
+            className="w-full mt-6 text-indigo-600 font-medium"
+          >
+            ← Назад
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+export default EnglishLearningApp;
